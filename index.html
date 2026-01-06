@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>幸運抽獎 - 簡報彩蛋</title>
+    <!-- 引入 Tailwind CSS 方便排版 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Canvas Confetti 煙火特效 -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <style>
+        /* 寶箱震動動畫 */
+        @keyframes shake {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            10% { transform: translate(-1px, -2px) rotate(-1deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            30% { transform: translate(3px, 2px) rotate(0deg); }
+            40% { transform: translate(1px, -1px) rotate(1deg); }
+            50% { transform: translate(-1px, 2px) rotate(-1deg); }
+            60% { transform: translate(-3px, 1px) rotate(0deg); }
+            70% { transform: translate(3px, 1px) rotate(-1deg); }
+            80% { transform: translate(-1px, -1px) rotate(1deg); }
+            90% { transform: translate(1px, 2px) rotate(0deg); }
+            100% { transform: translate(1px, -2px) rotate(-1deg); }
+        }
+
+        .shake-animation {
+            animation: shake 0.5s;
+            animation-iteration-count: infinite;
+        }
+
+        /* 徽章浮現動畫 */
+        @keyframes popIn {
+            0% { opacity: 0; transform: scale(0.5); }
+            80% { opacity: 1; transform: scale(1.1); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+
+        .badge-pop {
+            animation: popIn 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
+        /* 背景微光流動 */
+        .bg-gradient-animate {
+            background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+            background-size: 400% 400%;
+            animation: gradient 15s ease infinite;
+        }
+
+        @keyframes gradient {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* 禁用狀態樣式 */
+        .disabled-box {
+            filter: grayscale(100%);
+            opacity: 0.6;
+            cursor: not-allowed !important;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body class="bg-gradient-animate h-screen w-screen flex flex-col items-center justify-center text-white overflow-hidden font-sans">
+
+<!-- 狀態 1: 待機畫面 -->
+<div id="state-ready" class="text-center transition-all duration-500 w-full max-w-md px-4">
+    <h1 class="text-3xl font-bold mb-4 drop-shadow-md">✨ 簡報結尾彩蛋 ✨</h1>
+
+    <!-- 次數顯示 -->
+    <div class="mb-6">
+            <span id="attempts-badge" class="bg-white/20 px-4 py-1 rounded-full text-sm font-bold backdrop-blur-sm border border-white/30">
+                剩餘次數: <span id="attempts-count" class="text-yellow-300 text-lg">3</span>
+            </span>
+    </div>
+
+    <div id="gift-box" class="cursor-pointer group relative inline-block" onclick="startDraw()">
+        <!-- 寶箱 Emoji -->
+        <div id="gift-icon" class="text-9xl transition-transform transform group-hover:scale-110 drop-shadow-2xl">
+            🎁
+        </div>
+        <p id="click-hint" class="mt-8 text-xl animate-bounce bg-white/20 px-6 py-2 rounded-full backdrop-blur-sm">
+            點擊開啟
+        </p>
+    </div>
+
+    <p id="status-msg" class="mt-12 text-sm opacity-70">看看你是不是那 10% 的幸運兒...</p>
+</div>
+
+<!-- 狀態 2: 抽獎中 (震動) -->
+<div id="state-drawing" class="hidden text-center">
+    <div class="text-9xl shake-animation mb-4">
+        🎁
+    </div>
+    <p class="text-2xl font-bold tracking-widest">祈禱中...</p>
+</div>
+
+<!-- 狀態 3: 結果顯示 -->
+<div id="state-result" class="hidden text-center px-4 w-full max-w-md">
+
+    <!-- 結果容器 -->
+    <div class="bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-8 shadow-2xl relative overflow-hidden">
+
+        <!-- 光芒特效 (僅限大獎) -->
+        <div id="winner-glow" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-yellow-400 rounded-full blur-[100px] opacity-50 z-0"></div>
+
+        <!-- 徽章圖片/Emoji -->
+        <div id="result-icon" class="text-9xl mb-6 relative z-10 badge-pop">
+            <!-- JS 會填入內容 -->
+        </div>
+
+        <h2 id="result-title" class="text-3xl font-bold mb-2 relative z-10">
+            <!-- JS 會填入標題 -->
+        </h2>
+
+        <p id="result-desc" class="text-lg opacity-90 mb-8 relative z-10">
+            <!-- JS 會填入描述 -->
+        </p>
+
+        <!-- 按鈕區域 -->
+        <div class="relative z-10">
+            <button id="retry-btn" onclick="resetToReady()" class="hidden bg-white text-pink-600 font-bold py-3 px-8 rounded-full shadow-lg hover:bg-gray-100 transition-colors">
+                再試一次
+            </button>
+
+            <div id="game-over-msg" class="hidden text-gray-200 font-bold bg-black/30 py-2 px-4 rounded-lg">
+                抽獎次數已用完 😭
+            </div>
+        </div>
+    </div>
+
+    <div id="winner-instruction" class="hidden mt-6 bg-black/40 p-4 rounded-lg animate-pulse border border-yellow-400/50 text-yellow-300 font-bold">
+        🚨 請現在舉手領獎！
+    </div>
+</div>
+
+<script>
+    // ================= 配置區域 =================
+
+    const PRIZES = {
+        winner: {
+            id: 'rare',
+            icon: '🏆', // 圖片請改這裡: '<img src="rare.png" class="w-48 h-48 object-contain mx-auto">'
+            title: '恭喜中獎！',
+            desc: '你是被選中的天選之人！',
+            isJackpot: true
+        },
+        participant: {
+            id: 'common',
+            icon: '🏅', // 圖片請改這裡: '<img src="common.png" class="w-40 h-40 object-contain mx-auto">'
+            title: '感謝參與',
+            desc: '這次運氣差了一點點...',
+            isJackpot: false
+        }
+    };
+
+    const WIN_RATE = 0.1; // 10% 機率
+    const MAX_ATTEMPTS = 3; // 最大嘗試次數
+
+    // ================= 邏輯區域 =================
+
+    // 讀取 LocalStorage 資料
+    let attemptsLeft = parseInt(localStorage.getItem('lucky_draw_attempts_v1')) || 0;
+    let hasWon = localStorage.getItem('lucky_draw_won_v1') === 'true';
+
+    // 如果是第一次來(沒有紀錄)，初始化為最大次數
+    if (localStorage.getItem('lucky_draw_attempts_v1') === null) {
+        attemptsLeft = MAX_ATTEMPTS;
+        localStorage.setItem('lucky_draw_attempts_v1', attemptsLeft);
+    }
+
+    // DOM 元素
+    const stateReady = document.getElementById('state-ready');
+    const stateDrawing = document.getElementById('state-drawing');
+    const stateResult = document.getElementById('state-result');
+
+    const giftBox = document.getElementById('gift-box');
+    const clickHint = document.getElementById('click-hint');
+    const statusMsg = document.getElementById('status-msg');
+    const attemptsCountEl = document.getElementById('attempts-count');
+
+    const resultIcon = document.getElementById('result-icon');
+    const resultTitle = document.getElementById('result-title');
+    const resultDesc = document.getElementById('result-desc');
+    const winnerGlow = document.getElementById('winner-glow');
+    const winnerInstruction = document.getElementById('winner-instruction');
+    const retryBtn = document.getElementById('retry-btn');
+    const gameOverMsg = document.getElementById('game-over-msg');
+
+    // 初始化畫面
+    updateUI();
+
+    function updateUI() {
+        attemptsCountEl.innerText = attemptsLeft;
+
+        // 如果已經中過獎
+        if (hasWon) {
+            showWinStateDirectly();
+            return;
+        }
+
+        // 如果次數用完
+        if (attemptsLeft <= 0) {
+            disableBox("機會已用盡，感謝參與！");
+        }
+    }
+
+    function disableBox(msg) {
+        giftBox.classList.add('disabled-box');
+        clickHint.classList.add('hidden');
+        statusMsg.innerText = msg;
+        statusMsg.classList.add('text-yellow-300', 'font-bold', 'text-lg');
+    }
+
+    function startDraw() {
+        if (attemptsLeft <= 0 || hasWon) return;
+
+        // 1. 扣除次數
+        attemptsLeft--;
+        localStorage.setItem('lucky_draw_attempts_v1', attemptsLeft);
+        updateUI();
+
+        // 2. 切換動畫
+        stateReady.classList.add('hidden');
+        stateDrawing.classList.remove('hidden');
+
+        // 3. 等待動畫
+        setTimeout(() => {
+            calculateResult();
+        }, 2000);
+    }
+
+    function calculateResult() {
+        const rand = Math.random();
+        // 每次抽獎都是獨立機率，但你可以根據需求調整
+        const prize = rand < WIN_RATE ? PRIZES.winner : PRIZES.participant;
+
+        // 渲染內容
+        resultIcon.innerHTML = prize.icon;
+        resultTitle.innerText = prize.title;
+        resultDesc.innerText = prize.desc;
+
+        stateDrawing.classList.add('hidden');
+        stateResult.classList.remove('hidden');
+
+        if (prize.isJackpot) {
+            // 中大獎邏輯
+            hasWon = true;
+            localStorage.setItem('lucky_draw_won_v1', 'true');
+
+            winnerGlow.classList.remove('hidden');
+            winnerInstruction.classList.remove('hidden');
+            gameOverMsg.classList.add('hidden');
+            retryBtn.classList.add('hidden'); // 中獎就不需要重試按鈕了
+
+            launchConfetti();
+            document.body.style.background = "linear-gradient(-45deg, #FFD700, #FF8C00)";
+        } else {
+            // 沒中獎邏輯
+            winnerGlow.classList.add('hidden');
+            winnerInstruction.classList.add('hidden');
+
+            if (attemptsLeft > 0) {
+                // 還能抽：顯示重試按鈕
+                retryBtn.classList.remove('hidden');
+                gameOverMsg.classList.add('hidden');
+            } else {
+                // 沒機會了：顯示結束訊息
+                retryBtn.classList.add('hidden');
+                gameOverMsg.classList.remove('hidden');
+            }
+        }
+    }
+
+    function resetToReady() {
+        // 從結果頁返回首頁，而不是刷新頁面
+        stateResult.classList.add('hidden');
+        stateReady.classList.remove('hidden');
+        updateUI();
+    }
+
+    function showWinStateDirectly() {
+        // 如果一進來就發現贏過了，直接顯示結果頁，不給抽
+        // 這裡簡單處理：禁用首頁，顯示文字
+        disableBox("您已經中獎囉！請舉手領獎 🎉");
+
+        // 或是也可以選擇直接跳到結果頁 (視需求打開下面註解)
+        /*
+        stateReady.classList.add('hidden');
+        stateResult.classList.remove('hidden');
+        resultIcon.innerHTML = PRIZES.winner.icon;
+        resultTitle.innerText = PRIZES.winner.title;
+        resultDesc.innerText = "您之前已經中獎了！";
+        winnerInstruction.classList.remove('hidden');
+        retryBtn.classList.add('hidden');
+        launchConfetti();
+        */
+    }
+
+    function launchConfetti() {
+        var duration = 3 * 1000;
+        var animationEnd = Date.now() + duration;
+        var defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 0 };
+
+        var random = function(min, max) {
+            return Math.random() * (max - min) + min;
+        };
+
+        var interval = setInterval(function() {
+            var timeLeft = animationEnd - Date.now();
+
+            if (timeLeft <= 0) {
+                return clearInterval(interval);
+            }
+
+            var particleCount = 50 * (timeLeft / duration);
+            confetti(Object.assign({}, defaults, { particleCount, origin: { x: random(0.1, 0.3), y: Math.random() - 0.2 } }));
+            confetti(Object.assign({}, defaults, { particleCount, origin: { x: random(0.7, 0.9), y: Math.random() - 0.2 } }));
+        }, 250);
+    }
+</script>
+</body>
+</html>
